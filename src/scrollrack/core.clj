@@ -148,20 +148,29 @@
 (defn get-vout-type
   [vout]
   (let [mapping
-        {"pubkeyhash"     :rvn
+        {"pubkey"         :rvn
+         "pubkeyhash"     :rvn
+         "nulldata"       :data
          "new_asset"      :issue
          "reissue_asset"  :reissue
          "transfer_asset" :transfer}]
     (get mapping (:type (:scriptPubKey vout)) :other)))
 
+(defn get-vout-unit
+  [vout]
+  (or (get-in vout [:scriptPubKey :asset :name])
+      (if (> (:value vout) 0.0) "rvn" nil)))
+
 (defn translate-vout
   "Convert rpc/json representation to schema edn."
   [vout]
-  {:out/type (get-vout-type vout)
-   :out/unit (get-in vout [:scriptPubKey :asset :name] :rvn)
-   :out/qty  (get-in vout [:scriptPubKey :asset :amount] (:value vout))
-   :out/to   (first (get-in vout [:scriptPubKey :addresses]))
-   :out/n    (:n vout)})
+  (let [t-vout
+        {:out/type (get-vout-type vout)
+         :out/qty  (get-in vout [:scriptPubKey :asset :amount] (:value vout))
+         :out/n    (:n vout)}]
+    (-> t-vout
+        (assoc-unless-nil :out/to (first (get-in vout [:scriptPubKey :addresses])))
+        (assoc-unless-nil :out/unit (get-vout-unit vout)))))
 
 (defn translate-tx
   "Convert rpc/json representation to schema edn."
@@ -186,24 +195,33 @@
         (assoc-unless-nil :block/nextblockhash (:nextblockhash b)))))
 
 ; etl all blocks
-(defn get-all-block-indexes
+(defn get-block-count
   []
-  (range 0 (inc (r/get-block-count r-client))))
+  (inc (r/get-block-count r-client)))
 
-(defn get-all-block-hashes
-  []
-  (map #(r/get-block-hash r-client {:height %}) (get-all-block-indexes)))
+(defn get-block-indexes
+  ([]    (range 0 (get-block-count)))
+  ([t]   (take t (get-block-indexes)))
+  ([t d] (take t (drop d (get-block-indexes)))))
 
-(defn translate-all-blocks
-  []
-  (map #(translate-block (r/get-block r-client {:blockhash %})) (get-all-block-hashes)))
+(defn get-block-hashes
+  [& args]
+  (map #(r/get-block-hash r-client {:height %}) (apply get-block-indexes args)))
 
-(defn etl-all-blocks
-  []
-  (d/transact d-conn {:tx-data (translate-all-blocks)}))
+(defn get-blocks
+  [& args]
+  (map #(r/get-block r-client {:blockhash %}) (apply get-block-hashes args)))
+
+(defn translate-blocks
+  [& args]
+  (map translate-block (apply get-blocks args)))
+
+(defn etl-blocks
+  [& args]
+  (d/transact d-conn {:tx-data (apply translate-blocks args)}))
 
 ; load the blocks for real!
-;(etl-all-blocks)
+;(etl-blocks)
 
 ; grab db
 (def db (d/db d-conn))
