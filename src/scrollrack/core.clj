@@ -1,33 +1,41 @@
 (ns scrollrack.core)
 
 (require '[datomic.client.api :as d]
-         '[ravencoin-rpc.core :as r])
+         '[ravencoin-rpc.core :as r]
+         '[environ.core :refer [env]])
+
+
+;;;; THIS SECTION IS THE TOP LEVEL SETUP STUFF
+; set up raven client
+(def r-cfg {:url  (env :raven-url)
+            :user (env :raven-user)
+            :pass (env :raven-pass)})
+(defn r-client [] (r/client r-cfg))
 
 ; set up datomic client
 (def d-cfg {:server-type :ion
-            :region      "us-east-2"
-            :system      "datomic-1"
-            :endpoint    "http://entry.datomic-1.us-east-2.datomic.net:8182/"
-            :proxy-port  8182})
+            :region      (env :datomic-region)
+            :system      (env :datomic-system)
+            :endpoint    (env :datomic-endpoint)
+            :proxy-port  (Integer/parseInt (env :datomic-proxy-port))})
+(defn d-client [] (d/client d-cfg))
 
-(def d-client (d/client d-cfg))
-
-; set up raven client
-(def r-cfg {:url  "http://127.0.0.1:18766"
-            :user "ravencoin"
-            :pass "local321"})
-
-(def r-client (r/client r-cfg))
-
-; create database
-(def db-name "raven")
-
-(d/create-database d-client {:db-name db-name})
+; what database are we talkin' about here?
+(def db-name (env :db-name))
 
 ; get database connection
-(def d-conn (d/connect d-client {:db-name db-name}))
+(defn d-conn [] (d/connect (d-client) {:db-name db-name}))
 
-; create schema
+; grab db
+(defn db [] (d/db (d-conn)))
+
+
+;;;; THIS SECTION IS SCHEMA STUFF
+; create db
+(defn create-database []
+  (d/create-database (d-client) {:db-name db-name}))
+
+; define schema
 (def raven-schema [{:db/ident       :block/hash
                     :db/valueType   :db.type/string
                     :db/cardinality :db.cardinality/one
@@ -119,9 +127,16 @@
                     :db/cardinality :db.cardinality/one
                     :db/doc         "The output's vout index"}])
 
+; load schema
+(defn define-schema []
+  (d/transact (d-conn) {:tx-data raven-schema}))
 
-(d/transact d-conn {:tx-data raven-schema})
+; drop database
+(defn delete-database []
+  (d/delete-database d-client {:db-name db-name}))
 
+
+;;;; THIS SECTION IS ETL STUFF
 ; etl data
 ; I'm sure there's a nice way to do this...
 (defn assoc-unless-nil
@@ -131,8 +146,8 @@
 (defn get-transaction-detail
   [txid]
   (try
-    (let [hex (r/get-raw-transaction r-client {:txid txid})]
-      (r/decode-raw-transaction r-client {:hexstring hex}))
+    (let [hex (r/get-raw-transaction (r-client) {:txid txid})]
+      (r/decode-raw-transaction (r-client) {:hexstring hex}))
     (catch Exception e
       (println "Couldn't get transaction detail for [" txid "]: " (.getMessage e))
       {:txid txid})))
@@ -186,7 +201,7 @@
         {:block/hash       (:hash b)
          :block/version    (:version b)
          :block/difficulty (:difficulty b)
-         :block/time       (java.util.Date. (long (:time b)))
+         :block/time       (java.util.Date. (* (long (:time b)) 1000))
          :block/size       (:size b)
          :block/height     (:height b)
          :block/tx         (map #(translate-tx (get-transaction-detail %)) (:tx b))}]
@@ -197,7 +212,7 @@
 ; etl all blocks
 (defn get-block-count
   []
-  (inc (r/get-block-count r-client)))
+  (inc (r/get-block-count (r-client))))
 
 (defn get-block-indexes
   ([]    (range 0 (get-block-count)))
@@ -206,11 +221,11 @@
 
 (defn get-block-hashes
   [& args]
-  (map #(r/get-block-hash r-client {:height %}) (apply get-block-indexes args)))
+  (map #(r/get-block-hash (r-client) {:height %}) (apply get-block-indexes args)))
 
 (defn get-blocks
   [& args]
-  (map #(r/get-block r-client {:blockhash %}) (apply get-block-hashes args)))
+  (map #(r/get-block (r-client) {:blockhash %}) (apply get-block-hashes args)))
 
 (defn translate-blocks
   [& args]
@@ -218,25 +233,49 @@
 
 (defn etl-blocks
   [& args]
-  (d/transact d-conn {:tx-data (apply translate-blocks args)}))
+  (d/transact (d-conn) {:tx-data (apply translate-blocks args)}))
 
 ; load the blocks for real!
 ;(etl-blocks)
 
-; grab db
-(def db (d/db d-conn))
 
+;;;; THIS SECTION IS QUERY STUFF
 ; query
 (def all-blocks-q '[:find (pull ?b [*])
                     :where [?b :block/hash]])
 
-(d/q all-blocks-q db)
+(def block-count-q '[:find (count ?b)
+                     :where [?b :block/hash]])
 
 (defn fetch-block [n]
   (d/q '[:find (pull ?b [*])
          :in $ ?n
          :where [?b :block/height ?n]]
-       (d/db d-conn) n))
+       (d/db (d-conn)) n))
 
-; drop database
-;(d/delete-database d-client {:db-name db-name})
+(defn out-type-count
+  "Returns number of outputs of the specified type between block time t1 and t2."
+  [out-type from-inst to-inst]
+  (d/q '[:find (count ?out)
+         :in $ ?type ?t1 ?t2
+         :where
+         [?block :block/time ?time]
+         [(>= ?time ?t1)]
+         [(< ?time ?t2)]
+         [?block :block/tx ?tx]
+         [?tx :tx/vout ?out]
+         [?out :out/type ?type]]
+       (db) out-type from-inst to-inst))
+
+; times series queries
+; a.k.a. the payoff?
+(defn out-type-frequency
+  " Answers questions like \"How many transfers per week happened in 2019?
+  out-type can be :rvn, :issue, :transfer, :reissue
+  scale is in seconds for now (so pass 60*60*24*7 for weeks)
+  from-when and to-when are instants"
+  [out-type scale from-when to-when]
+  (map #(apply (partial out-type-count out-type) (map (fn [ms] (java.util.Date. ms)) %))
+       (partition 2 1 [(.getTime to-when)]
+                  (range (.getTime from-when) (.getTime to-when) scale))))
+
