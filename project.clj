@@ -16,6 +16,7 @@
                  ; web server stuff
                  [compojure "1.6.1"]
                  [http-kit "2.3.0"]
-                 [ring/ring-defaults "0.3.2"]]
+                 [ring/ring-defaults "0.3.2"]
+                 [ring-cors "0.1.13"]]
   :main scrollrack.main
   :repl-options {:init-ns scrollrack.core})

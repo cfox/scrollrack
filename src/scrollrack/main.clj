@@ -5,6 +5,7 @@
             [compojure.core :refer :all]
             [compojure.route :as route]
             [ring.middleware.defaults :refer :all]
+            [ring.middleware.cors :refer [wrap-cors]]
             [clojure.pprint :as pp]
             [clojure.string :as str]
             [cheshire.core :refer :all])
@@ -36,12 +37,15 @@
            (GET "/fetch-block" [] fetch-block)
            (route/not-found "Error, page not found!"))
 
+(def app
+  (-> app-routes
+      (wrap-defaults site-defaults)
+      (wrap-cors :access-control-allow-origin [#".*"]
+                 :access-control-allow-methods [:get :put :post :delete])))
+
 (defn -main
   "This is our main entry point"
   [& args]
   (let [port (Integer/parseInt (or (System/getenv "PORT") "3000"))]
-    ; Run the server with Ring.defaults middleware
-    (server/run-server (wrap-defaults #'app-routes site-defaults) {:port port})
-    ; Run the server without ring defaults
-    ;(server/run-server #'app-routes {:port port})
+    (server/run-server app {:port port})
     (println (str "Running webserver at http:/127.0.0.1:" port "/"))))
