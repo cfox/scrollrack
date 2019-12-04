@@ -41,7 +41,8 @@
   (-> app-routes
       (wrap-defaults site-defaults)
       (wrap-cors :access-control-allow-origin [#".*"]
-                 :access-control-allow-methods [:get :put :post :delete])))
+                 :access-control-allow-headers ["Content-Type"]
+                 :access-control-allow-methods [:get :put :post :delete :options])))
 
 (defn -main
   "This is our main entry point"
