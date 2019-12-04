@@ -1,8 +1,7 @@
-(ns scrollrack.core)
-
-(require '[datomic.client.api :as d]
-         '[ravencoin-rpc.core :as r]
-         '[environ.core :refer [env]])
+(ns scrollrack.core
+  (:require [environ.core :refer [env]]
+            [ravencoin-rpc.core :as r]
+            [datomic.client.api :as d]))
 
 
 ;;;; THIS SECTION IS THE TOP LEVEL SETUP STUFF
@@ -13,7 +12,7 @@
 (defn r-client [] (r/client r-cfg))
 
 ; set up datomic client
-(def d-cfg {:server-type :ion
+(def d-cfg {:server-type (keyword (env :datomic-server-type))
             :region      (env :datomic-region)
             :system      (env :datomic-system)
             :endpoint    (env :datomic-endpoint)
@@ -278,4 +277,3 @@
   (map #(apply (partial out-type-count out-type) (map (fn [ms] (java.util.Date. ms)) %))
        (partition 2 1 [(.getTime to-when)]
                   (range (.getTime from-when) (.getTime to-when) scale))))
-
