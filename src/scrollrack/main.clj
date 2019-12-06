@@ -31,10 +31,17 @@
    :body    (->>
               (generate-string (core/fetch-block (Integer/parseInt (:n (:params req))))))})
 
+(defn meld [req]
+  {:status  200
+   :headers {"Content-Type" "application/json"}
+   :body    (->>
+              (generate-string (core/meld)))})
+
 (defroutes app-routes
            (GET "/" [] simple-body-page)
            (GET "/request" [] request-example)
            (GET "/fetch-block" [] fetch-block)
+           (GET "/meld" [] meld)
            (route/not-found "Error, page not found!"))
 
 (def app
@@ -49,4 +56,4 @@
   [& args]
   (let [port (Integer/parseInt (or (System/getenv "PORT") "3000"))]
     (server/run-server app {:port port})
-    (println (str "Running webserver at http:/127.0.0.1:" port "/"))))
+    (println (str "Running webserver at http://127.0.0.1:" port "/"))))
