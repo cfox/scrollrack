@@ -35,7 +35,7 @@
   {:status  200
    :headers {"Content-Type" "application/json"}
    :body    (->>
-              (generate-string (core/meld)))})
+              (generate-string (core/meld (Integer/parseInt (get (:params req) :n "60")))))})
 
 (defroutes app-routes
            (GET "/" [] simple-body-page)

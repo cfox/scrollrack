@@ -327,12 +327,14 @@
                      :d-tip new-d-tip)))
         (assoc s :status :ahead)))))
 (defn meld
-  "Meld blockchain from Raven to Datomic.
+  "Meld n blocks from Raven to Datomic.
   Idempotent, incremental, and non-blocking with a single worker thread.
   Keep calling this and eventually you'll be up to date!
   Returns a status and some counts (tbd)."
-  []
-  (deref (send-off spock meld-chunk 100)))
+  ([n]
+   (deref (send-off spock meld-chunk n)))
+  ([]
+   (meld 100)))
 
 (defn spot-check
   "Get the hash of a random block from Datomic and make sure it matches
