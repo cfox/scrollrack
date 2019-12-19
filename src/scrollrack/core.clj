@@ -288,9 +288,76 @@
 
 (defn etl-blocks
   "Extract blocks from Raven, transform them and assert them in a transaction.
-  Provide `t` and `d` to take/drop values for pagination/batching."
+  Provide `t` and `d` to take/drop values for pagination/batching.
+  Try multiple times, backing off on retries..."
   [& args]
-  (d/transact (d-conn) {:tx-data (apply translate-blocks args)}))
+  (try
+    (d/transact (d-conn) {:tx-data (apply translate-blocks args)})
+    (catch Exception e
+      (try
+        (println (str (.getMessage e) "; retrying in 1 second..."))
+        (java.lang.Thread/sleep (* 1 1000))
+        (d/transact (d-conn) {:tx-data (apply translate-blocks args)})
+        (catch Exception e
+          (println (str (.getMessage e) "; retrying in 5 seconds..."))
+          (java.lang.Thread/sleep (* 5 1000))
+          (try
+            (d/transact (d-conn) {:tx-data (apply translate-blocks args)})
+            (catch Exception e
+              (println (str (.getMessage e) "; retrying in 20 seconds..."))
+              (java.lang.Thread/sleep (* 20 1000))
+              (try
+                (d/transact (d-conn) {:tx-data (apply translate-blocks args)})
+                (catch Exception e
+                  (println (str (.getMessage e) "; retrying for the last time in 60 seconds..."))
+                  (java.lang.Thread/sleep (* 60 1000))
+                  (try
+                    (d/transact (d-conn) {:tx-data (apply translate-blocks args)})
+                    (catch Exception e
+                      (println (str (.getMessage e) "; retrying for the VERY LAST TIME in 5 minutes..."))
+                      (java.lang.Thread/sleep (* 5 60 1000)))))))))))))
+
+(defn suck-blocks
+  "Just etl blocks please.  Forever until you're caught up or there's an error.
+  In batches."
+  [batch-size]
+  (loop [d-height (fetch-block-count)
+         r-height (get-block-count)]
+    (let [blocks-behind (- r-height d-height)
+          start-time (java.util.Date.)
+          r-hash (:hash (get-block (dec d-height)))
+          d-hash (:block/hash (fetch-block (dec d-height)))]
+      ; sanity check that tip of datomic chain is in raven chain
+      (assert (= r-hash d-hash))
+
+      (if (= blocks-behind 0)
+        (do
+          (println (str "Caught up!  Waiting 60s for next block..."))
+          (java.lang.Thread/sleep (* 60 1000)))
+        (do
+          (println (str "Behind by " blocks-behind " blocks...  Sucking engaged!"))
+          (loop [height d-height
+                 remaining blocks-behind]
+            (let [chunk-size (min batch-size remaining)]
+              (if (= remaining 0)
+                (println "Done sucking!")
+                (do
+                  (println (str "Sucking " chunk-size " blocks at height " height "..."))
+                  (etl-blocks chunk-size height)
+                  (println "Done!")
+                  (let [now-remaining (- remaining chunk-size)
+                        elapsed-secs (/ (- (.getTime (java.util.Date.)) (.getTime start-time)) 1000)
+                        total-sucked (- blocks-behind now-remaining)
+                        secs-per-block (/ elapsed-secs total-sucked)
+                        est-remaining-secs (* secs-per-block now-remaining)]
+                    (println total-sucked "/" blocks-behind
+                             " blocks sucked in "
+                             (format "%.2f" (float elapsed-secs)) "sec "
+                             "(" (format "%.2f" (float secs-per-block)) "sec/block, "
+                             "est. " (format "%.2f" (float est-remaining-secs)) "sec to go)")
+                    (recur (+ height chunk-size) now-remaining)))))))))
+
+    (recur (fetch-block-count) (get-block-count))))
 
 ; load the blocks for real!
 ;(etl-blocks)
