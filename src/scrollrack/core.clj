@@ -309,13 +309,18 @@
               (try
                 (d/transact (d-conn) {:tx-data (apply translate-blocks args)})
                 (catch Exception e
-                  (println (str (.getMessage e) "; retrying for the last time in 60 seconds..."))
+                  (println (str (.getMessage e) "; retrying again in 60 seconds..."))
                   (java.lang.Thread/sleep (* 60 1000))
                   (try
                     (d/transact (d-conn) {:tx-data (apply translate-blocks args)})
                     (catch Exception e
-                      (println (str (.getMessage e) "; retrying for the VERY LAST TIME in 5 minutes..."))
-                      (java.lang.Thread/sleep (* 5 60 1000)))))))))))))
+                      (println (str (.getMessage e) "; retrying yet again in 2 minutes..."))
+                      (java.lang.Thread/sleep (* 2 60 1000))))
+                      (try
+                        (d/transact (d-conn) {:tx-data (apply translate-blocks args)})
+                        (catch Exception e
+                          (println (str (.getMessage e) "; retrying for the VERY LAST TIME in 5 minutes..."))
+                          (java.lang.Thread/sleep (* 5 60 1000)))))))))))))
 
 (defn suck-blocks
   "Just etl blocks please.  Forever until you're caught up or there's an error.
