@@ -40,22 +40,22 @@
                     :db/cardinality :db.cardinality/one
                     :db/unique      :db.unique/identity
                     :db/doc         "The block hash"}
-                   {:db/ident       :block/version
-                    :db/valueType   :db.type/long
-                    :db/cardinality :db.cardinality/one
-                    :db/doc         "The block version"}
-                   {:db/ident       :block/difficulty
-                    :db/valueType   :db.type/double
-                    :db/cardinality :db.cardinality/one
-                    :db/doc         "The block difficulty"}
+                   ;{:db/ident       :block/version
+                   ; :db/valueType   :db.type/long
+                   ; :db/cardinality :db.cardinality/one
+                   ; :db/doc         "The block version"}
+                   ;{:db/ident       :block/difficulty
+                   ; :db/valueType   :db.type/double
+                   ; :db/cardinality :db.cardinality/one
+                   ; :db/doc         "The block difficulty"}
                    {:db/ident       :block/time
                     :db/valueType   :db.type/instant
                     :db/cardinality :db.cardinality/one
                     :db/doc         "The block time"}
-                   {:db/ident       :block/size
-                    :db/valueType   :db.type/long
-                    :db/cardinality :db.cardinality/one
-                    :db/doc         "The block size"}
+                   ;{:db/ident       :block/size
+                   ; :db/valueType   :db.type/long
+                   ; :db/cardinality :db.cardinality/one
+                   ; :db/doc         "The block size"}
                    {:db/ident       :block/height
                     :db/valueType   :db.type/long
                     :db/cardinality :db.cardinality/one
@@ -65,10 +65,10 @@
                     :db/valueType   :db.type/string
                     :db/cardinality :db.cardinality/one
                     :db/doc         "The block previousblockhash"}
-                   {:db/ident       :block/nextblockhash
-                    :db/valueType   :db.type/string
-                    :db/cardinality :db.cardinality/one
-                    :db/doc         "The block nextblockhash"}
+                   ;{:db/ident       :block/nextblockhash
+                   ; :db/valueType   :db.type/string
+                   ; :db/cardinality :db.cardinality/one
+                   ; :db/doc         "The block nextblockhash"}
                    {:db/ident       :block/tx
                     :db/valueType   :db.type/ref
                     :db/isComponent true
@@ -133,7 +133,7 @@
 
 ; drop database
 (defn delete-database []
-  (d/delete-database d-client {:db-name db-name}))
+  (d/delete-database (d-client) {:db-name db-name}))
 
 
 ;;;; THIS SECTION IS QUERY STUFF
@@ -246,15 +246,16 @@
   [b]
   (let [t-b
         {:block/hash       (:hash b)
-         :block/version    (:version b)
-         :block/difficulty (:difficulty b)
+         ;:block/version    (:version b)
+         ;:block/difficulty (:difficulty b)
          :block/time       (java.util.Date. (* (long (:time b)) 1000))
-         :block/size       (:size b)
+         ;:block/size       (:size b)
          :block/height     (:height b)
          :block/tx         (map #(translate-tx (get-transaction-detail %)) (:tx b))}]
     (-> t-b
         (assoc-unless-nil :block/previousblockhash (:previousblockhash b))
-        (assoc-unless-nil :block/nextblockhash (:nextblockhash b)))))
+        ;(assoc-unless-nil :block/nextblockhash (:nextblockhash b))
+        )))
 
 ; etl all blocks
 (defn get-block-count
