@@ -144,6 +144,12 @@
                  :where [?b :block/hash]]
                (d/db (d-conn)))))
 
+(defn fetch-max-block-height
+  []
+  (ffirst (d/q '[:find (max ?h)
+                 :where [_ :block/height ?h]]
+               (d/db (d-conn)))))
+
 (defn fetch-block [n]
   (ffirst (d/q '[:find (pull ?b [*])
                  :in $ ?n
@@ -324,50 +330,50 @@
 
 (defn suck-blocks
   "Just etl blocks please.  Forever until you're caught up or there's an error.
-  In batches."
-  [batch-size]
-  (loop [d-height (fetch-block-count)
-         r-height (get-block-count)]
-    (let [blocks-behind (- r-height d-height)
-          start-time (java.util.Date.)
-          r-hash (:hash (get-block (dec d-height)))
-          d-hash (:block/hash (fetch-block (dec d-height)))]
-      ; sanity check that tip of datomic chain is in raven chain
-      (assert (= r-hash d-hash))
+  Converts blocks in batches of size `batch-size`.  Starts at height `starting-block`
+  (defaults to starting at highest existing block)."
+  ([batch-size]
+   (suck-blocks batch-size (fetch-max-block-height)))
+  ([batch-size starting-block]
+   (loop [d-height starting-block
+          r-height (get-block-count)]
+     (let [blocks-behind (- r-height d-height)
+           start-time (java.util.Date.)]
+       (if (= blocks-behind 0)
+         (do
+           (println (str "Caught up!  Waiting 60s for next block..."))
+           (java.lang.Thread/sleep (* 60 1000)))
+         (do
+           (println (str "Behind by " blocks-behind " blocks...  Sucking engaged!"))
+           (loop [height d-height
+                  remaining blocks-behind]
+             (let [chunk-size (min batch-size remaining)]
+               (if (= remaining 0)
+                 (println "Done sucking!")
+                 (do
+                   (println (str "Sucking " chunk-size " blocks at height " height "..."))
+                   (etl-blocks chunk-size height)
+                   (println "Done!")
+                   (let [now-remaining (- remaining chunk-size)
+                         elapsed-secs (/ (- (.getTime (java.util.Date.)) (.getTime start-time)) 1000)
+                         total-sucked (- blocks-behind now-remaining)
+                         secs-per-block (/ elapsed-secs total-sucked)
+                         est-remaining-secs (* secs-per-block now-remaining)]
+                     (println total-sucked "/" blocks-behind
+                              " blocks sucked in "
+                              (format "%.2f" (float elapsed-secs)) "sec "
+                              "(" (format "%.2f" (float secs-per-block)) "sec/block, "
+                              "est. " (format "%.2f" (float est-remaining-secs)) "sec to go)")
+                     (recur (+ height chunk-size) now-remaining)))))))))
 
-      (if (= blocks-behind 0)
-        (do
-          (println (str "Caught up!  Waiting 60s for next block..."))
-          (java.lang.Thread/sleep (* 60 1000)))
-        (do
-          (println (str "Behind by " blocks-behind " blocks...  Sucking engaged!"))
-          (loop [height d-height
-                 remaining blocks-behind]
-            (let [chunk-size (min batch-size remaining)]
-              (if (= remaining 0)
-                (println "Done sucking!")
-                (do
-                  (println (str "Sucking " chunk-size " blocks at height " height "..."))
-                  (etl-blocks chunk-size height)
-                  (println "Done!")
-                  (let [now-remaining (- remaining chunk-size)
-                        elapsed-secs (/ (- (.getTime (java.util.Date.)) (.getTime start-time)) 1000)
-                        total-sucked (- blocks-behind now-remaining)
-                        secs-per-block (/ elapsed-secs total-sucked)
-                        est-remaining-secs (* secs-per-block now-remaining)]
-                    (println total-sucked "/" blocks-behind
-                             " blocks sucked in "
-                             (format "%.2f" (float elapsed-secs)) "sec "
-                             "(" (format "%.2f" (float secs-per-block)) "sec/block, "
-                             "est. " (format "%.2f" (float est-remaining-secs)) "sec to go)")
-                    (recur (+ height chunk-size) now-remaining)))))))))
-
-    (recur (fetch-block-count) (get-block-count))))
+     (recur (fetch-max-block-height) (get-block-count)))))
 
 ; load the blocks for real!
 ;(etl-blocks)
 
 ; assets active mainnet block: 435522 (use 435500)
+; I'm leaving a hole in the database because I'm impatient
+; skipping from ~266k to 425k to get to the assets
 
 ; ETL; we want it to be:
 ; -- algo:
