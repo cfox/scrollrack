@@ -144,6 +144,12 @@
                  :where [?b :block/hash]]
                (d/db (d-conn)))))
 
+(defn fetch-min-block-height
+  []
+  (ffirst (d/q '[:find (min ?h)
+                 :where [_ :block/height ?h]]
+               (d/db (d-conn)))))
+
 (defn fetch-max-block-height
   []
   (ffirst (d/q '[:find (max ?h)
@@ -162,20 +168,36 @@
   (d/q '[:find (count ?out)
          :in $ ?type ?t1 ?t2
          :where
+         [?out :out/type ?type]
+         [?tx :tx/vout ?out]
+         [?block :block/tx ?tx]
          [?block :block/time ?time]
          [(>= ?time ?t1)]
-         [(< ?time ?t2)]
-         [?block :block/tx ?tx]
-         [?tx :tx/vout ?out]
-         [?out :out/type ?type]]
+         [(< ?time ?t2)]]
        (db) out-type from-inst to-inst))
+
+(defn fetch-recently-issued
+  "Returns the names of assets issued within the last `millis` milliseconds of
+  `asof`."
+  [millis asof]
+  (let [since (java.util.Date. (- (.getTime asof) millis))]
+    (d/q '[:find (pull ?out [:out/unit]) ?time
+           :in $ ?type ?t1 ?t2
+           :where
+           [(> ?time ?t1)]
+           [(<= ?time ?t2)]
+           [?block :block/time ?time]
+           [?block :block/tx ?tx]
+           [?tx :tx/vout ?out]
+           [?out :out/type ?type]]
+         (db) :issue since asof)))
 
 ; times series queries
 ; a.k.a. the payoff?
 (defn out-type-frequency
   " Answers questions like \"How many transfers per week happened in 2019?
   out-type can be :rvn, :issue, :transfer, :reissue
-  scale is in seconds for now (so pass 60*60*24*7 for weeks)
+  scale is in milliseconds for now (so pass 1000*60*60*24*7 for weeks)
   from-when and to-when are instants"
   [out-type scale from-when to-when]
   (map #(apply (partial out-type-count out-type) (map (fn [ms] (java.util.Date. ms)) %))
@@ -263,6 +285,11 @@
   []
   (inc (r/get-block-count (r-client))))
 
+(defn get-max-block-height
+  "Get the height of the tip."
+  []
+  (:height (r/get-block (r-client) {:blockhash (r/get-best-block-hash (r-client))})))
+
 (defn get-block
   "Get block at height n from Raven."
   [n]
@@ -337,7 +364,7 @@
    (suck-blocks batch-size (fetch-max-block-height)))
   ([batch-size starting-block]
    (loop [d-height starting-block
-          r-height (get-block-count)]
+          r-height (get-max-block-height)]
      (let [blocks-behind (- r-height d-height)
            start-time (java.util.Date.)]
        (if (= blocks-behind 0)
@@ -346,6 +373,8 @@
            (java.lang.Thread/sleep (* 60 1000)))
          (do
            (println (str "Behind by " blocks-behind " blocks...  Sucking engaged!"))
+           (println d-height)
+           (println r-height)
            (loop [height d-height
                   remaining blocks-behind]
              (let [chunk-size (min batch-size remaining)]
@@ -353,7 +382,7 @@
                  (println "Done sucking!")
                  (do
                    (println (str "Sucking " chunk-size " blocks at height " height "..."))
-                   (etl-blocks chunk-size height)
+                   (etl-blocks chunk-size (inc height))
                    (println "Done!")
                    (let [now-remaining (- remaining chunk-size)
                          elapsed-secs (/ (- (.getTime (java.util.Date.)) (.getTime start-time)) 1000)
@@ -367,7 +396,7 @@
                               "est. " (format "%.2f" (float est-remaining-secs)) "sec to go)")
                      (recur (+ height chunk-size) now-remaining)))))))))
 
-     (recur (fetch-max-block-height) (get-block-count)))))
+     (recur (fetch-max-block-height) (get-max-block-height)))))
 
 ; load the blocks for real!
 ;(etl-blocks)
