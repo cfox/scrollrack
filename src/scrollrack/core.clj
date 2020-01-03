@@ -405,45 +405,6 @@
 ; I'm leaving a hole in the database because I'm impatient
 ; skipping from ~266k to 425k to get to the assets
 
-; ETL; we want it to be:
-; -- algo:
-;    -- determine state (`r` is Raven chain; `d` is Datomic "chain")
-;    -- r and d same size with same tip hash -- up to date!
-;    -- r smaller than d: find last common block and roll back d
-;    -- r bigger than d: find last common block and assert rest of r
-;    -- (a full consistency check would be nice too sometimes -- all hashes match, etc.)
-(def spock (agent {:status :unknown}))
-(defn meld-chunk
-  "Given an agent state, meld at most n blocks and return the updated state."
-  [state n]
-  (let [r-count (get-block-count)
-        r-tip (:hash (get-block (dec r-count)))
-        d-count (fetch-block-count)
-        d-tip (:block/hash (fetch-block (dec d-count)))
-        s (assoc state :status :melding
-                       :r-count r-count :r-tip r-tip
-                       :d-count d-count :d-tip d-tip)]
-    (if (and (= r-count d-count) (= r-tip d-tip))
-      (assoc s :status :ok)
-      (if (< d-count r-count)
-        (let [batch-size (min n (- r-count d-count))]
-          (etl-blocks batch-size d-count)
-          (let [new-d-count (fetch-block-count)
-                new-d-tip (:block/hash (fetch-block (dec d-count)))]
-            (assoc s :status :loading
-                     :d-count new-d-count
-                     :d-tip new-d-tip)))
-        (assoc s :status :ahead)))))
-(defn meld
-  "Meld n blocks from Raven to Datomic.
-  Idempotent, incremental, and non-blocking with a single worker thread.
-  Keep calling this and eventually you'll be up to date!
-  Returns a status and some counts (tbd)."
-  ([n]
-   (deref (send-off spock meld-chunk n)))
-  ([]
-   (meld 100)))
-
 (defn spot-check
   "Get the hash of a random block from Datomic and make sure it matches
   the block with the same index on Raven."

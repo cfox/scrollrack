@@ -31,17 +31,10 @@
    :body    (->>
               (generate-string (core/fetch-block (Integer/parseInt (:n (:params req))))))})
 
-(defn meld [req]
-  {:status  200
-   :headers {"Content-Type" "application/json"}
-   :body    (->>
-              (generate-string (core/meld (Integer/parseInt (get (:params req) :n "60")))))})
-
 (defroutes app-routes
            (GET "/" [] simple-body-page)
            (GET "/request" [] request-example)
            (GET "/fetch-block" [] fetch-block)
-           (GET "/meld" [] meld)
            (route/not-found "Error, page not found!"))
 
 (def app
