@@ -172,25 +172,27 @@
          [?tx :tx/vout ?out]
          [?block :block/tx ?tx]
          [?block :block/time ?time]
-         [(>= ?time ?t1)]
-         [(< ?time ?t2)]]
+         [(> ?time ?t1)]
+         [(<= ?time ?t2)]]
        (db) out-type from-inst to-inst))
 
-(defn fetch-recently-issued
-  "Returns the names of assets issued within the last `millis` milliseconds of
-  `asof`."
-  [millis asof]
+(defn fetch-recent
+  "Returns the names of assets and number of transactions which contain outputs
+  of type `outtype` (e.g. :issue, :transfer) within the last `millis`
+  milliseconds of `asof`."
+  [outtype millis asof]
   (let [since (java.util.Date. (- (.getTime asof) millis))]
-    (d/q '[:find (pull ?out [:out/unit]) ?time
+    (d/q '[:find ?unit, (count ?tx)
            :in $ ?type ?t1 ?t2
            :where
+           [?block :block/time ?time]
            [(> ?time ?t1)]
            [(<= ?time ?t2)]
-           [?block :block/time ?time]
            [?block :block/tx ?tx]
            [?tx :tx/vout ?out]
-           [?out :out/type ?type]]
-         (db) :issue since asof)))
+           [?out :out/type ?type]
+           [?out :out/unit ?unit]]
+         (db) outtype since asof)))
 
 ; times series queries
 ; a.k.a. the payoff?
@@ -373,8 +375,6 @@
            (java.lang.Thread/sleep (* 60 1000)))
          (do
            (println (str "Behind by " blocks-behind " blocks...  Sucking engaged!"))
-           (println d-height)
-           (println r-height)
            (loop [height d-height
                   remaining blocks-behind]
              (let [chunk-size (min batch-size remaining)]
