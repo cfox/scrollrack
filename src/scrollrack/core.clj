@@ -162,6 +162,20 @@
                  :where [?b :block/height ?n]]
                (d/db (d-conn)) n)))
 
+(defn fetch-recent-outputs []
+  "Return all the outputs from the last 10 minutes."
+  (let [to-inst (java.util.Date.)
+        from-inst (java.util.Date. (- (.getTime to-inst) (* 1000 60 10)))]
+    (d/q '[:find (pull ?out [*])
+           :in $ ?t1 ?t2
+           :where
+           [?block :block/time ?time]
+           [(> ?time ?t1)]
+           [(<= ?time ?t2)]
+           [?block :block/tx ?tx]
+           [?tx :tx/vout ?out]]
+         (db) from-inst to-inst)))
+
 (defn out-type-count
   "Returns number of outputs of the specified type between block time t1 and t2."
   [out-type from-inst to-inst]

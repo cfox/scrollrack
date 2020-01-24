@@ -17,6 +17,10 @@
                  [compojure "1.6.1"]
                  [http-kit "2.3.0"]
                  [ring/ring-defaults "0.3.2"]
-                 [ring-cors "0.1.13"]]
+                 [ring-cors "0.1.13"]
+                 ; oz / vega-lite
+                 [metasoarous/oz "1.5.6"]
+                 ;[metasoarous/oz "1.6.0-alpha5"]
+                 ]
   :main scrollrack.main
   :repl-options {:init-ns scrollrack.core})

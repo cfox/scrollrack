@@ -1,11 +1,14 @@
 (ns scrollrack.main
   (:require [environ.core :refer [env]]
             [scrollrack.core :as core]
+            [scrollrack.visual :as visual]
+            [oz.core :as oz]
             [org.httpkit.server :as server]
             [compojure.core :refer :all]
             [compojure.route :as route]
             [ring.middleware.defaults :refer :all]
             [ring.middleware.cors :refer [wrap-cors]]
+            [ring.util.response :as resp]
             [clojure.pprint :as pp]
             [clojure.string :as str]
             [cheshire.core :refer :all])
@@ -35,6 +38,7 @@
            (GET "/" [] simple-body-page)
            (GET "/request" [] request-example)
            (GET "/fetch-block" [] fetch-block)
+           (GET "/transfers" [] (oz/html (visual/recent-transfer-rpt)))
            (route/not-found "Error, page not found!"))
 
 (def app
