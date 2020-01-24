@@ -23,4 +23,4 @@
                  ;[metasoarous/oz "1.6.0-alpha5"]
                  ]
   :main scrollrack.main
-  :repl-options {:init-ns scrollrack.core})
+  :repl-options {:init-ns scrollrack.assets})
